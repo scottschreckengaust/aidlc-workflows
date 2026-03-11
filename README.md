@@ -1,5 +1,6 @@
 # AI-DLC (AI-Driven Development Life Cycle)
 
+<!-- TODO: Replace this Amplify URL with a permanent/stable URL when available -->
 AI-DLC is an intelligent software development workflow that adapts to your needs, maintains quality standards, and keeps you in control of the process. For learning more about AI-DLC Methodology, read this [blog](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/) and the [Method Definition Paper](https://prod.d13rzhkk8cj2z0.amplifyapp.com/) referred in it.
 
 ## Table of Contents
@@ -13,7 +14,10 @@ AI-DLC is an intelligent software development workflow that adapts to your needs
 - [Tenets](#tenets)
 - [Prerequisites](#prerequisites)
 - [Troubleshooting](#troubleshooting)
+- [Version Control Recommendations](#version-control-recommendations)
 - [Additional Resources](#additional-resources)
+- [Security](#security)
+- [License](#license)
 
 ---
 
@@ -35,6 +39,7 @@ AI-DLC is an intelligent software development workflow that adapts to your needs
   - [Cline](#cline)
   - [Claude Code](#claude-code)
   - [GitHub Copilot](#github-copilot)
+  - [Other Agents](#other-agents)
 
 ---
 
@@ -49,6 +54,13 @@ On macOS/Linux:
 mkdir -p .kiro/steering
 cp -R ~/Downloads/aidlc-rules/aws-aidlc-rules .kiro/steering/
 cp -R ~/Downloads/aidlc-rules/aws-aidlc-rule-details .kiro/
+```
+
+On Windows (PowerShell):
+```powershell
+New-Item -ItemType Directory -Force -Path ".kiro\steering"
+Copy-Item -Recurse "$env:USERPROFILE\Downloads\aidlc-rules\aws-aidlc-rules" ".kiro\steering\"
+Copy-Item -Recurse "$env:USERPROFILE\Downloads\aidlc-rules\aws-aidlc-rule-details" ".kiro\"
 ```
 
 On Windows (CMD):
@@ -69,7 +81,7 @@ Your project should look like:
 
 To verify the rules are loaded:
 
-#### Verify in Kiro IDE 
+#### Verify in Kiro IDE
 
 Open the steering files panel and confirm you see an entry for `core-workflow` under `Workspace` as shown in the screenshot below.
 
@@ -77,7 +89,7 @@ Open the steering files panel and confirm you see an entry for `core-workflow` u
 
 We use Kiro IDE in Vibe mode to run the AI-DLC workflow. This ensures that AI-DLC workflow guides the development workflow in Kiro. At times, Kiro may nudge you to switch to spec mode. Select `No` to such prompts to stay in Vibe mode.
 
-<img src="./assets/images/kiro-sdd-nudge.png" alt="Staying in Kiro Vibe mode" width="500" height="175">
+<img src="./assets/images/kiro-sdd-nudge.png?raw=true" alt="Staying in Kiro Vibe mode" width="500" height="175">
 
 #### Verify in Kiro CLI
 Run `kiro-cli`, then `/context show`, and confirm entries for `.kiro/steering/aws-aidlc-rules`.
@@ -97,6 +109,13 @@ On macOS/Linux:
 mkdir -p .amazonq/rules
 cp -R ~/Downloads/aidlc-rules/aws-aidlc-rules .amazonq/rules/
 cp -R ~/Downloads/aidlc-rules/aws-aidlc-rule-details .amazonq/
+```
+
+On Windows (PowerShell):
+```powershell
+New-Item -ItemType Directory -Force -Path ".amazonq\rules"
+Copy-Item -Recurse "$env:USERPROFILE\Downloads\aidlc-rules\aws-aidlc-rules" ".amazonq\rules\"
+Copy-Item -Recurse "$env:USERPROFILE\Downloads\aidlc-rules\aws-aidlc-rule-details" ".amazonq\"
 ```
 
 On Windows (CMD):
@@ -226,6 +245,7 @@ xcopy "%USERPROFILE%\Downloads\aidlc-rules\aws-aidlc-rule-details" ".aidlc-rule-
     ├── common/
     ├── inception/
     ├── construction/
+    ├── extensions/
     └── operations/
 ```
 
@@ -302,6 +322,7 @@ xcopy "%USERPROFILE%\Downloads\aidlc-rules\aws-aidlc-rule-details" ".aidlc-rule-
     ├── common/
     ├── inception/
     ├── construction/
+    ├── extensions/
     └── operations/
 ```
 
@@ -375,6 +396,7 @@ xcopy "%USERPROFILE%\Downloads\aidlc-rules\aws-aidlc-rule-details" ".aidlc-rule-
     ├── common/
     ├── inception/
     ├── construction/
+    ├── extensions/
     └── operations/
 ```
 
@@ -425,6 +447,7 @@ xcopy "%USERPROFILE%\Downloads\aidlc-rules\aws-aidlc-rule-details" ".aidlc-rule-
     ├── common/
     ├── inception/
     ├── construction/
+    ├── extensions/
     └── operations/
 ```
 
@@ -529,7 +552,7 @@ The workflow currently ships with a baseline security extension.
 aws-aidlc-rule-details/
 └── extensions/
     └── security/                      # Extension category
-        └── baseline/
+        ├── baseline/
         │   └── security-baseline.md   # Baseline security rules
         ├── compliance/                # Proposed folder hierarchy
         │   ├── hipaa/                 # HIPAA compliance rules
@@ -547,7 +570,7 @@ To add rules to an existing category (e.g., security):
 1. Create a new directory under `extensions/security/` (e.g., `compliance/hipaa/`).
 2. Add one or more markdown files with your rules. Follow the same structure as `security-baseline.md`:
    - Give each rule a unique ID.
-   - Include an **Applicabality Question** described above
+   - Include an **Applicability Question** described above
    - Include a **Rule** section describing the requirement.
    - Include a **Verification** section with concrete checks the model should evaluate.
 3. Rules are blocking by default — if verification criteria are not met, the stage cannot proceed until the finding is resolved.
@@ -601,9 +624,15 @@ Have one of our supported platforms/tools for Assisted AI Coding installed:
 
 ### Platform-Specific Issues
 
-#### Amazon Q Developer / Kiro
-- Use `/context show` to verify rules are loaded
-- Check `.amazonq/rules/` or `.kiro/steering/` directory structure
+#### Kiro
+- Use `/context show` in Kiro CLI to verify rules are loaded
+- Check `.kiro/steering/` directory structure
+- Note: Kiro uses `aws-aidlc-rule-details` (not `.aidlc-rule-details/`) under the `.kiro/` directory
+
+#### Amazon Q Developer
+- Check `.amazonq/rules/` directory structure
+- Verify rules are listed in the Amazon Q Chat Rules panel
+- Note: Amazon Q uses `aws-aidlc-rule-details` (not `.aidlc-rule-details/`) under the `.amazonq/` directory
 
 #### Cursor
 - For "Apply Intelligently", ensure a description is defined in frontmatter
@@ -637,7 +666,9 @@ Have one of our supported platforms/tools for Assisted AI Coding installed:
 CLAUDE.md
 AGENTS.md
 .amazonq/rules/
+.amazonq/aws-aidlc-rule-details/
 .kiro/steering/
+.kiro/aws-aidlc-rule-details/
 .cursor/rules/
 .clinerules/
 .github/copilot-instructions.md
@@ -656,6 +687,7 @@ AGENTS.md
 
 | Resource | Link |
 |----------|------|
+<!-- TODO: Replace this Amplify URL with a permanent/stable URL when available -->
 | AI-DLC Method Definition Paper | [Paper](https://prod.d13rzhkk8cj2z0.amplifyapp.com/) |
 | AI-DLC Methodology Blog | [AWS Blog](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/) |
 | AI-DLC Open-source Launch Blog | [AWS Blog](https://aws.amazon.com/blogs/devops/open-sourcing-adaptive-workflows-for-ai-driven-development-life-cycle-ai-dlc/) |
@@ -676,4 +708,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 ## License
 
-This library is licensed under the MIT-0 License. See the LICENSE file.
+This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.

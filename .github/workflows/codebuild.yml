@@ -94,11 +94,11 @@ jobs:
                   - lscpu
                   - echo "=== Memory ==="
                   - free -h
-                  - echo "=== Kisk ==="
+                  - echo "=== Disk ==="
                   - df -h
                   - echo "=== Block Devices ==="
                   - lsblk
-                  - echo "=== Hardward Summary ==="
+                  - echo "=== Hardware Summary ==="
                   - lshw -short || echo "lshw failed"
               build:
                 commands:
@@ -109,6 +109,7 @@ jobs:
                   - echo "post_build ${TEST_ONE}" | tee --append ./codebuild.out
                   - echo "Build completed with status $CODEBUILD_BUILD_SUCCEEDING"
                   - cat ./codebuild.out
+                  - aws sts get-caller-identity
             artifacts:
               files:
                 - '**/codebuild.out'

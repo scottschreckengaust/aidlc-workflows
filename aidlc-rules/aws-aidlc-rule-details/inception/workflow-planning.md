@@ -271,8 +271,7 @@ flowchart TD
         NFRA["NFR Requirements<br/><b>STATUS</b>"]
         NFRD["NFR Design<br/><b>STATUS</b>"]
         ID["Infrastructure Design<br/><b>STATUS</b>"]
-        CP["Code Planning<br/><b>EXECUTE</b>"]
-        CG["Code Generation<br/><b>EXECUTE</b>"]
+        CG["Code Generation<br/>(Part 1: Planning, Part 2: Generation)<br/><b>EXECUTE</b>"]
         BT["Build and Test<br/><b>EXECUTE</b>"]
     end
     
@@ -283,8 +282,7 @@ flowchart TD
     Start --> WD
     WD --> RA
     RA --> WP
-    WP --> CP
-    CP --> CG
+    WP --> CG
     CG --> BT
     BT --> End(["Complete"])
     
@@ -299,7 +297,7 @@ flowchart TD
 ### 🔵 INCEPTION PHASE
 - [x] Workspace Detection (COMPLETED)
 - [x] Reverse Engineering (COMPLETED/SKIPPED)
-- [x] Requirements Elaboration (COMPLETED)
+- [x] Requirements Analysis (COMPLETED)
 - [x] User Stories (COMPLETED/SKIPPED)
 - [x] Execution Plan (IN PROGRESS)
 - [ ] Application Design - [EXECUTE/SKIP]
@@ -318,10 +316,8 @@ flowchart TD
   - **Rationale**: [Why executing or skipping]
 - [ ] Infrastructure Design - [EXECUTE/SKIP]
   - **Rationale**: [Why executing or skipping]
-- [ ] Code Planning - EXECUTE (ALWAYS)
-  - **Rationale**: Implementation approach needed
 - [ ] Code Generation - EXECUTE (ALWAYS)
-  - **Rationale**: Code implementation needed
+  - **Rationale**: Implementation planning (Part 1: Code Planning) and code generation (Part 2: Code Generation) needed
 - [ ] Build and Test - EXECUTE (ALWAYS)
   - **Rationale**: Build, test, and verification needed
 
@@ -380,8 +376,7 @@ Update `aidlc-docs/aidlc-state.md`:
 - [ ] NFR Requirements - [EXECUTE/SKIP]
 - [ ] NFR Design - [EXECUTE/SKIP]
 - [ ] Infrastructure Design - [EXECUTE/SKIP]
-- [ ] Code Planning - EXECUTE
-- [ ] Code Generation - EXECUTE
+- [ ] Code Generation - EXECUTE (Part 1: Code Planning, Part 2: Code Generation)
 - [ ] Build and Test - EXECUTE
 
 ### 🟡 OPERATIONS PHASE
