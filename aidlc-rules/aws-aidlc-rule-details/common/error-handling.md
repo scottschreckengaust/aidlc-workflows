@@ -45,7 +45,7 @@
 - **Solution**: Ask user if they want to start fresh or attempt recovery
 - **Recovery**: Create backup, start new state file
 
-**Error**: Cannot determine required phases
+**Error**: Cannot determine required stages
 - **Cause**: Insufficient information from user
 - **Solution**: Ask clarifying questions about intent and scope
 - **Workaround**: Default to comprehensive execution plan
@@ -130,7 +130,7 @@
 - **Solution**: Clearly mark as **HUMAN TASK**, provide instructions
 - **Wait**: For user confirmation before proceeding
 
-### Code Planning Errors
+### Code Generation Errors (Part 1: Code Planning)
 
 **Error**: Code generation plan is incomplete
 - **Cause**: Missing design artifacts, unclear requirements
@@ -142,7 +142,7 @@
 - **Solution**: Reorder generation sequence to respect dependencies
 - **Workaround**: Generate with stub dependencies, integrate later
 
-### Code Generation Errors
+### Code Generation Errors (Part 2: Code Generation)
 
 **Error**: Cannot generate code for a step
 - **Cause**: Insufficient design information, unclear requirements

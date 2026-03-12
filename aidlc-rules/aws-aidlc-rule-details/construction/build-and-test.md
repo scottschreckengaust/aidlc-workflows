@@ -323,7 +323,7 @@ Present completion message in this structure:
      3. **Formatted Workflow Message** (mandatory): Always end with this exact format:
 
 ```markdown
-> **📋 <u>**REVIEW REQUIRED:**</u>**
+> **📋 <u>**REVIEW REQUIRED:**</u>**  
 > Please examine the build and test summary at: `aidlc-docs/construction/build-and-test/build-and-test-summary.md`
 
 
@@ -342,7 +342,7 @@ Present completion message in this structure:
 
 ## Step 10: Log Interaction
 
-**MANDATORY**: Log the phase completion in `aidlc-docs/audit.md`:
+**MANDATORY**: Log the stage completion in `aidlc-docs/audit.md`:
 
 ```markdown
 ## Build and Test Stage

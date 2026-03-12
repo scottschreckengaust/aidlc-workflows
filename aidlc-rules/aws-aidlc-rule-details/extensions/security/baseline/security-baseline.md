@@ -309,7 +309,7 @@ These rules are cross-cutting constraints that apply to every AI-DLC stage. At e
 
 ## Appendix: OWASP Reference Mapping
 
-<!-- TODO: Verify "OWASP Top 10 (2025)" is the latest published edition and update the year if needed -->
+<!-- TODO: CRITICAL - This entire OWASP mapping table needs verification. The "2025" edition may not exist; the latest published OWASP Top 10 is 2021. Category IDs (A01-A10), numbering, and names must be validated against the actual published standard before relying on this mapping. -->
 For human reviewers, the following maps SECURITY rules to OWASP Top 10 (2025) categories:
 
 | SECURITY Rule | OWASP Category |
