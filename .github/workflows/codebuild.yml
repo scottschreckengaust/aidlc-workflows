@@ -94,11 +94,11 @@ jobs:
                   - lscpu
                   - echo "=== Memory ==="
                   - free -h
-                  - echo "=== Kisk ==="
+                  - echo "=== Disk ==="
                   - df -h
                   - echo "=== Block Devices ==="
                   - lsblk
-                  - echo "=== Hardward Summary ==="
+                  - echo "=== Hardware Summary ==="
                   - lshw -short || echo "lshw failed"
               build:
                 commands:
