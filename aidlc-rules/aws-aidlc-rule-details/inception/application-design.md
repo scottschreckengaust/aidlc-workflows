@@ -40,14 +40,14 @@ Application Design focuses on:
 ### 4. Generate Context-Appropriate Questions
 **DIRECTIVE**: Thoroughly analyze the requirements and stories to identify ALL areas where clarification would improve application design quality. Be proactive in asking questions to ensure comprehensive design coverage.
 
-**CRITICAL**: Default to asking questions when there is ANY ambiguity or missing detail that could affect design quality. It is better to ask too many questions than to make incorrect design assumptions.
+**CRITICAL**: Default to asking questions when there is ANY ambiguity or missing detail that could affect design quality. It's better to ask too many questions than to make incorrect design assumptions.
 
 **MANDATORY**: Evaluate ALL of the following categories by asking targeted questions about each. For each category, determine applicability based on evidence from the requirements and stories -- do not skip categories without explicit justification:
 
 - EMBED questions using [Answer]: tag format
 - Focus on ANY ambiguities, missing information, or areas needing clarification
 - Generate questions wherever user input would improve design decisions
-- **When in doubt, ask the question** -- overconfidence leads to poor designs
+- **When in doubt, ask the question** - overconfidence leads to poor designs
 
 **Question categories to evaluate** (consider ALL categories):
 - **Component Identification** - Ask about component boundaries, organization, and grouping strategies

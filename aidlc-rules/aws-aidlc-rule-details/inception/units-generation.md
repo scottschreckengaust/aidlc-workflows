@@ -37,14 +37,14 @@ This stage decomposes the system into manageable units of work through two integ
 ## Step 3: Generate Context-Appropriate Questions
 **DIRECTIVE**: Thoroughly analyze the requirements, stories, and application design to identify ALL areas where clarification would improve unit decomposition quality. Be proactive in asking questions to ensure comprehensive coverage of decomposition concerns.
 
-**CRITICAL**: Default to asking questions when there is ANY ambiguity or missing detail that could affect unit boundaries or decomposition quality. It is better to ask too many questions than to make incorrect assumptions about how the system should be decomposed.
+**CRITICAL**: Default to asking questions when there is ANY ambiguity or missing detail that could affect unit boundaries or decomposition quality. It's better to ask too many questions than to make incorrect assumptions about how the system should be decomposed.
 
 **MANDATORY**: Evaluate ALL of the following categories by asking targeted questions about each. For each category, determine applicability based on evidence from the requirements, stories, and application design -- do not skip categories without explicit justification:
 
 - EMBED questions using [Answer]: tag format
 - Focus on ANY ambiguities, missing information, or areas needing clarification
 - Generate questions wherever user input would improve decomposition decisions
-- **When in doubt, ask the question** -- overconfidence leads to poor unit boundaries
+- **When in doubt, ask the question** - overconfidence leads to poor unit boundaries
 
 **Question categories to evaluate** (consider ALL categories):
 - **Story Grouping** - Ask about grouping strategy, story affinity, and logical clustering approaches

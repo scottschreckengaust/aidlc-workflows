@@ -685,9 +685,9 @@ AGENTS.md
 
 ## Additional Resources
 
+<!-- TODO: Replace this Amplify URL with a permanent/stable URL when available -->
 | Resource | Link |
 |----------|------|
-<!-- TODO: Replace this Amplify URL with a permanent/stable URL when available -->
 | AI-DLC Method Definition Paper | [Paper](https://prod.d13rzhkk8cj2z0.amplifyapp.com/) |
 | AI-DLC Methodology Blog | [AWS Blog](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/) |
 | AI-DLC Open-source Launch Blog | [AWS Blog](https://aws.amazon.com/blogs/devops/open-sourcing-adaptive-workflows-for-ai-driven-development-life-cycle-ai-dlc/) |

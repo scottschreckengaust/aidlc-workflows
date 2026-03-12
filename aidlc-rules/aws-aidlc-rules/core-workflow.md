@@ -351,7 +351,7 @@ All subsequent rule detail file references (e.g., `common/process-overview.md`, 
 
 **Skip IF**:
 - No NFR requirements
-- NFR Requirements Analysis was skipped
+- NFR Requirements was skipped
 
 **Execution**:
 1. **MANDATORY**: Log any user input during this stage in audit.md

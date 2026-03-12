@@ -10,13 +10,13 @@
 - 🟡 **OPERATIONS PHASE** - Deployment & Monitoring (future expansion)
 
 **Stage**: An individual workflow activity within a phase
-- Examples: Workspace Detection stage, Requirements Analysis stage, Code Planning stage
+- Examples: Workspace Detection stage, Requirements Analysis stage, Code Generation stage
 - Each stage has specific prerequisites, steps, and outputs
 - Stages can be ALWAYS-EXECUTE or CONDITIONAL
 
 **Usage Examples**:
-- ✅ "The CONSTRUCTION phase contains 7 stages"
-- ✅ "The Code Planning stage is always executed"
+- ✅ "The CONSTRUCTION phase contains 6 stages"
+- ✅ "The Code Generation stage is always executed"
 - ✅ "We're in the INCEPTION phase, executing the Requirements Analysis stage"
 - ❌ "The Requirements Analysis phase" (should be "stage")
 - ❌ "The CONSTRUCTION stage" (should be "phase")
