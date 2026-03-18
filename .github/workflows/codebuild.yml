@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -36,7 +38,7 @@ jobs:
 
     permissions:
       actions: write
-      contents: read
+      contents: write
       id-token: write # Required for OIDC token request to AWS STS
 
     runs-on: ubuntu-latest
@@ -203,3 +205,51 @@ jobs:
           name: trend.zip
           path: ${{ github.workspace }}/.codebuild/downloads/trend.zip
           if-no-files-found: error
+
+      - name: Upload artifacts to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          DOWNLOADS="${GITHUB_WORKSPACE}/.codebuild/downloads"
+          ARTIFACTS=(
+            "$DOWNLOADS/${{ env.CODEBUILD_PROJECT_NAME }}.zip"
+            "$DOWNLOADS/evaluation.zip"
+            "$DOWNLOADS/trend.zip"
+          )
+
+          # Wait for release to exist (release.yml typically finishes in ~30s,
+          # CodeBuild takes minutes — this is a safety net)
+          RELEASE_EXISTS=false
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" --repo "$REPO" --json isDraft,tagName &>/dev/null; then
+              RELEASE_EXISTS=true
+              break
+            fi
+            echo "Waiting for release $TAG (attempt $i/30)..."
+            sleep 10
+          done
+
+          if [[ "$RELEASE_EXISTS" == "true" ]]; then
+            # Release exists (draft or published) — upload/replace artifacts
+            IS_DRAFT=$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq '.isDraft')
+            if [[ "$IS_DRAFT" == "true" ]]; then
+              echo "Draft release $TAG found — uploading artifacts"
+            else
+              echo "Published release $TAG found — attempting to replace artifacts"
+            fi
+            gh release upload "$TAG" "${ARTIFACTS[@]}" --repo "$REPO" --clobber || {
+              echo "WARNING: Failed to upload artifacts to release $TAG (release may be immutable)"
+              echo "Artifacts are still available as workflow artifacts above"
+            }
+          else
+            # No release exists — create a draft with artifacts
+            echo "No release found for $TAG — creating draft release with artifacts"
+            gh release create "$TAG" "${ARTIFACTS[@]}" \
+              --repo "$REPO" \
+              --draft \
+              --title "AI-DLC Workflow ${TAG#v}" \
+              --notes "Build artifacts from CodeBuild. Rules zip pending from release workflow."
+          fi

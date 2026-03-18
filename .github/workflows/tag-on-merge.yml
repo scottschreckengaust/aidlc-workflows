@@ -1,0 +1,49 @@
+# Tag Release
+#
+# Automatically creates a version tag when a release PR is merged.
+# Triggered by pull_request close events; only runs when:
+#   - The PR was actually merged (not just closed)
+#   - The branch name starts with "release/v"
+#
+# The tag is created on the merge commit SHA, which triggers:
+#   - release.yml (draft GitHub Release with rules zip)
+#   - codebuild.yml (build artifacts attached to the draft)
+
+name: Tag Release
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create Release Tag
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          TAG="${BRANCH#release/}"
+          echo "Creating tag $TAG on merge commit $SHA"
+
+          # Verify tag doesn't already exist
+          if gh api "repos/$REPO/git/refs/tags/$TAG" &>/dev/null; then
+            echo "ERROR: Tag $TAG already exists"
+            exit 1
+          fi
+
+          gh api "repos/$REPO/git/refs" \
+            -f ref="refs/tags/$TAG" \
+            -f sha="$SHA"
+
+          echo "Tag $TAG created on $SHA"
