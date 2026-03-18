@@ -58,8 +58,21 @@ jobs:
           else
             VERSION=$(git-cliff --bumped-version 2>/dev/null || echo "")
             if [[ -z "$VERSION" ]]; then
-              echo "ERROR: Could not determine version from conventional commits"
-              exit 1
+              # Fall back to patch bump from latest tag
+              LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+              if [[ -n "$LATEST_TAG" ]]; then
+                LATEST="${LATEST_TAG#v}"
+                MAJOR="${LATEST%%.*}"
+                REST="${LATEST#*.}"
+                MINOR="${REST%%.*}"
+                PATCH="${REST#*.}"
+                PATCH=$((PATCH + 1))
+                VERSION="${MAJOR}.${MINOR}.${PATCH}"
+                echo "WARNING: No conventional commits detected — falling back to patch bump: $VERSION"
+              else
+                echo "WARNING: No conventional commits and no existing tags — nothing to release"
+                exit 0
+              fi
             fi
           fi
           # Strip leading v if present
