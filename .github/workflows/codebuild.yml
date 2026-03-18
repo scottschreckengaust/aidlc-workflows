@@ -58,16 +58,16 @@ jobs:
           key: ${{ env.CODEBUILD_PROJECT_NAME }}-${{ github.ref_name }}-${{ github.sha }}
           lookup-only: true
 
-      - name: Configure AWS credentials
-        if: steps.cache-check.outputs.cache-hit != 'true'
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
-        with:
-          role-to-assume: ${{ secrets.AWS_CODEBUILD_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-          role-duration-seconds: ${{ vars.ROLE_DURATION_SECONDS || 7200 }}
-          role-session-name: GitHubActions${{ github.run_id }}
-          mask-aws-account-id: true
-          retry-max-attempts: 0
+      # - name: Configure AWS credentials
+      #   if: steps.cache-check.outputs.cache-hit != 'true'
+      #   uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_CODEBUILD_ROLE_ARN }}
+      #     aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      #     role-duration-seconds: ${{ vars.ROLE_DURATION_SECONDS || 7200 }}
+      #     role-session-name: GitHubActions${{ github.run_id }}
+      #     mask-aws-account-id: true
+      #     retry-max-attempts: 0
 
       - name: Run CodeBuild
         if: steps.cache-check.outputs.cache-hit != 'true'
