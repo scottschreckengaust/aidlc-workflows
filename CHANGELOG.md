@@ -10,11 +10,6 @@ All notable changes to this project will be documented in this file.
 - correct copy-paste error in error-handling.md (#96)
 
 
-### Documentation
-
-- update changelog for v0.1.5
-
-
 ### Features
 
 - add CodeBuild workflow (#92)
@@ -23,23 +18,12 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous
 
 - add templates for github issues (#97)
-## [0.1.5] - 2026-02-24
-
-
-### Documentation
-
-- update changelog for v0.1.4 (#88)
 ## [0.1.4] - 2026-02-24
 
 
 ### Bug Fixes
 
 - correct GitHub Copilot instructions and Kiro CLI rule-details path resolution (#82, #84) (#87)
-
-
-### Documentation
-
-- update changelog for v0.1.3 (#77)
 ## [0.1.3] - 2026-02-11
 
 
@@ -62,7 +46,6 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
-- update changelog for v0.1.1
 - update README to direct users to GitHub Releases (#61)
 - add Windows CMD setup instructions and ZIP note (#68)
 
@@ -72,12 +55,6 @@ All notable changes to this project will be documented in this file.
 - add test automation friendly code generation rules
 - add frontend design coverage in Construction phase
 ## [0.1.1] - 2026-01-22
-
-
-### Documentation
-
-- update changelog for v0.0.5
-- update changelog for v0.0.6
 
 
 ### Features
