@@ -120,6 +120,11 @@ jobs:
           git commit -m "docs: update changelog for $TAG"
           git push origin "$BRANCH"
 
+          LABEL_FLAG=""
+          if gh label list --search "release" --json name --jq '.[].name' | grep -qx "release"; then
+            LABEL_FLAG="--label release"
+          fi
+
           gh pr create \
             --title "release: $TAG" \
             --body "$(cat <<EOF
@@ -134,4 +139,4 @@ jobs:
           After both workflows complete, review and publish the draft release.
           EOF
           )" \
-            --label "release"
+            $LABEL_FLAG
