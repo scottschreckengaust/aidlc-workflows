@@ -53,16 +53,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
         run: |
           TAG="${BRANCH#release/}"
           echo "Dispatching release.yml on ref $TAG"
-          gh workflow run release.yml --ref "$TAG"
+          gh workflow run release.yml --ref "$TAG" --repo "$REPO"
 
       - name: Dispatch codebuild workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
         run: |
           TAG="${BRANCH#release/}"
           echo "Dispatching codebuild.yml on ref $TAG"
-          gh workflow run codebuild.yml --ref "$TAG"
+          gh workflow run codebuild.yml --ref "$TAG" --repo "$REPO"
