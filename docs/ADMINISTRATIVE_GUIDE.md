@@ -65,30 +65,45 @@ Three workflows form two distinct pipelines:
 
 ### Pipeline 1: Release (draft → review → publish)
 
-```
-git push tag v* ──┬──→ release.yml (creates DRAFT release with ai-dlc-rules zip)
-                  │
-                  └──→ codebuild.yml (runs CodeBuild on tag, uploads artifacts to draft)
-                            │
-                  ┌─────────┘
-                  ▼
-        Human reviews draft release in GitHub UI
-                  │
-                  ▼ (publishes the release)
-                  │
-                  └──→ changelog.yml (opens PR with updated CHANGELOG.md)
+```mermaid
+flowchart TD
+    A["git push tag v*"] --> B["release.yml"]
+    A --> C["codebuild.yml"]
+
+    B --> D["Zip aidlc-rules/"]
+    D --> E["Create DRAFT GitHub Release\nwith ai-dlc-rules zip"]
+
+    C --> F{{"Manual approval\n(codebuild environment)"}}
+    F --> G["Run AWS CodeBuild\non tagged commit"]
+    G --> H["Download artifacts from S3"]
+    H --> I{"Draft release\nexists?"}
+    I -- "Yes (normal)" --> J["Upload artifacts\nto draft release"]
+    I -- "No (codebuild finished first)" --> K["Create draft release\nwith build artifacts"]
+    I -- "Published (re-run)" --> L["Replace artifacts\nor warn if immutable"]
+
+    J --> M["Human reviews draft\nin GitHub UI"]
+    K --> M
+    L --> M
+    E --> M
+
+    M --> N["Publish release"]
+    N --> O["changelog.yml"]
+    O --> P["Generate CHANGELOG.md\nvia git-cliff"]
+    P --> Q["Open PR with label\ndocumentation"]
 ```
 
-Both `release.yml` and `codebuild.yml` trigger independently on the same `v*` tag push. The `codebuild.yml` workflow handles all release states resiliently:
+Both `release.yml` and `codebuild.yml` trigger independently on the same `v*` tag push. The `codebuild.yml` workflow requires **manual approval** via the `codebuild` protected environment before the build proceeds. The upload step handles all release states resiliently:
 - **Draft exists** (normal case) — attaches build artifacts to the draft
 - **No release yet** (codebuild finished first) — creates a draft with build artifacts
 - **Already published** (re-run) — attempts to replace artifacts, warns gracefully if immutable
 
 ### Pipeline 2: Continuous Integration
 
-```
-git push main ────→ codebuild.yml (runs CodeBuild, uploads workflow artifacts)
-workflow_dispatch ─→ codebuild.yml
+```mermaid
+flowchart LR
+    A["git push main\nor workflow_dispatch"] --> B{{"Manual approval\n(codebuild environment)"}}
+    B --> C["Run AWS CodeBuild"]
+    C --> D["Upload workflow artifacts"]
 ```
 
 The `changelog.yml` workflow triggers on `release: published` (not `created`), so draft releases do not trigger changelog generation prematurely.
