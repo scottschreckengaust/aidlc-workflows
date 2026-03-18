@@ -73,6 +73,7 @@ jobs:
                 echo "WARNING: No conventional commits and no existing tags — nothing to release"                                                                                      
                 exit 0
               fi
+            fi
           fi
           # Strip leading v if present
           VERSION="${VERSION#v}"
