@@ -76,34 +76,41 @@ flowchart TD
     C --> F{{"Manual approval\n(codebuild environment)"}}
     F --> G["Run AWS CodeBuild\non tagged commit"]
     G --> H["Download artifacts from S3"]
-    H --> I{"Draft release\nexists?"}
-    I -- "Yes (normal)" --> J["Upload artifacts\nto draft release"]
-    I -- "No (codebuild finished first)" --> K["Create draft release\nwith build artifacts"]
-    I -- "Published (re-run)" --> L["Replace artifacts\nor warn if immutable"]
+
+    E -.->|"draft created\n(~30s)"| I{"Release state?"}
+    H --> I
+
+    I -- "Draft exists\n(normal)" --> J["Upload artifacts\nto draft release"]
+    I -- "No release yet\n(codebuild finished first)" --> K["Create draft release\nwith build artifacts"]
+    I -- "Published\n(re-run)" --> L["Replace artifacts\nor warn if immutable"]
 
     J --> M["Human reviews draft\nin GitHub UI"]
     K --> M
     L --> M
-    E --> M
 
     M --> N["Publish release"]
     N --> O["changelog.yml"]
     O --> P["Generate CHANGELOG.md\nvia git-cliff"]
     P --> Q["Open PR with label\ndocumentation"]
+
+    R["workflow_dispatch\n(select tag in UI)"] -.->|"manual backup\ntrigger"| F
 ```
 
 Both `release.yml` and `codebuild.yml` trigger independently on the same `v*` tag push. The `codebuild.yml` workflow requires **manual approval** via the `codebuild` protected environment before the build proceeds. The upload step handles all release states resiliently:
-- **Draft exists** (normal case) — attaches build artifacts to the draft
-- **No release yet** (codebuild finished first) — creates a draft with build artifacts
+- **Draft exists** (normal case) — `release.yml` finishes in ~30s creating the draft; CodeBuild takes minutes, so the draft is ready when artifacts are uploaded
+- **No release yet** (codebuild finished first) — creates a draft with build artifacts; `release.yml` will update it later
 - **Already published** (re-run) — attempts to replace artifacts, warns gracefully if immutable
+
+**Backup strategy:** If the tag-triggered CodeBuild run fails or is blocked, an admin can manually dispatch the workflow via `workflow_dispatch` and select the `v*` tag in the GitHub UI branch/tag selector. Since `github.ref` resolves to the selected tag, the upload step activates automatically.
 
 ### Pipeline 2: Continuous Integration
 
 ```mermaid
 flowchart LR
-    A["git push main\nor workflow_dispatch"] --> B{{"Manual approval\n(codebuild environment)"}}
-    B --> C["Run AWS CodeBuild"]
-    C --> D["Upload workflow artifacts"]
+    A["git push main"] --> B{{"Manual approval\n(codebuild environment)"}}
+    C["workflow_dispatch\n(no tag input)"] --> B
+    B --> D["Run AWS CodeBuild"]
+    D --> E["Upload workflow artifacts"]
 ```
 
 The `changelog.yml` workflow triggers on `release: published` (not `created`), so draft releases do not trigger changelog generation prematurely.
@@ -117,12 +124,12 @@ The `changelog.yml` workflow triggers on `release: published` (not `created`), s
 | Property | Value |
 |----------|-------|
 | **File** | `.github/workflows/codebuild.yml` |
-| **Triggers** | `push` to `main`, `push` tags `v*`, `workflow_dispatch` (manual) |
+| **Triggers** | `push` to `main`, `push` tags `v*`, `workflow_dispatch` (manual — select a tag in the UI to trigger a release build) |
 | **Environment** | `codebuild` (protected, manual approval) |
 | **Runner** | `ubuntu-latest` |
 | **Concurrency** | Groups by `{workflow}-{ref}`, cancels in-progress |
 
-**Purpose:** Runs an AWS CodeBuild project, downloads primary and secondary artifacts from S3, caches them in GitHub Actions cache, uploads them as workflow artifacts, and (on tag pushes) attaches them to the GitHub Release.
+**Purpose:** Runs an AWS CodeBuild project, downloads primary and secondary artifacts from S3, caches them in GitHub Actions cache, uploads them as workflow artifacts, and (when triggered from a `v*` tag) attaches them to the GitHub Release.
 
 **Job: `build`**
 
@@ -140,7 +147,7 @@ The `changelog.yml` workflow triggers on `release: published` (not `created`), s
 | 10 | Upload primary artifact | `!env.ACT` | `actions/upload-artifact` for `{project}.zip` |
 | 11 | Upload evaluation artifact | `!env.ACT` | `actions/upload-artifact` for `evaluation.zip` |
 | 12 | Upload trend artifact | `!env.ACT` | `actions/upload-artifact` for `trend.zip` |
-| 13 | Upload artifacts to release | tag push (`v*`) | Attach build artifacts to GitHub Release (draft or published) |
+| 13 | Upload artifacts to release | triggered from a `v*` tag | Attach build artifacts to GitHub Release (draft or published) |
 
 **Caching strategy:** The cache key `{project}-{branch}-{sha}` ensures that the same commit on the same branch is never built twice. On cache hit, steps 3–9 are skipped entirely.
 
