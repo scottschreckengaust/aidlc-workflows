@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.1.8] - 2026-03-18
+
+
+### Bug Fixes
+
+- Corrected 'Life Cycle' to 'Life Cycles' in README
 ## [0.1.7] - 2026-03-18
 
 
