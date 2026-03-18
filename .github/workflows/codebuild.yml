@@ -72,89 +72,103 @@ jobs:
       - name: Run CodeBuild
         if: steps.cache-check.outputs.cache-hit != 'true'
         id: codebuild
-        uses: aws-actions/aws-codebuild-run-build@d8279f349f3b1b84e834c30e47c20dcb8888b7e5 # v1.0.18
-        with:
-          project-name: ${{ env.CODEBUILD_PROJECT_NAME }}
-          source-version-override: ${{ github.sha }}
-          buildspec-override: |
-            version: 0.2
-            env:
-              variables:
-                GH_TOKEN: ${{ github.token }}
-            phases:
-              install:
-                commands:
-                  - dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo || echo "dnf config-manager"
-                  - dnf install -y 'dnf-command(config-manager)' gh || echo "dnf install failed"
-                  - curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=$HOME/.local/bin:$PATH || "echo uv failed"
-              pre_build:
-                commands:
-                  - echo "pre_build"
-                  - mkdir -p .codebuild
-                  - touch .codebuild/codebuild.out
-                  - git config --global --add safe.directory "/codebuild/output/srcDownload/src" # for running AWS CodeBuild locally
-              build:
-                commands:
-                  - DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
-                  - CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
-                  - CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
-                  - IS_RELEASE=$([[ -n "$CURRENT_TAG" ]] && echo "true" || echo "false")
-                  - IS_PRE_RELEASE=$([[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]] && echo "true" || echo "false")
-                  - IS_PRE_MERGE=$([[ -z "$CURRENT_TAG" && "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]] && echo "true" || echo "false")
-                  - if [[ "$IS_RELEASE" == "true" ]]; then echo "This is a release"; fi;
-                  - if [[ "$IS_PRE_RELEASE" == "true" ]]; then echo "This is a pre-release"; fi;
-                  - if [[ "$IS_PRE_MERGE" == "true" ]]; then echo "This is a pre-merge"; fi;
-                  - mkdir -p .codebuild/evaluation
-                  - mkdir -p .codebuild/trend
-                  - mkdir -p .codebuild/missing
-                  - touch .codebuild/evaluation/evaluation_report.html
-                  - touch .codebuild/evaluation/metrics.yml
-                  - touch .codebuild/trend/trend_report.html
-              post_build:
-                commands:
-                  - echo "Build completed with status $CODEBUILD_BUILD_SUCCEEDING"
-                  - cat ./.codebuild/codebuild.out
-            artifacts:
-              files:
-                - '**/*'
-              discard-paths: no
-              base-directory: .codebuild
-              secondary-artifacts:
-                evaluation:
-                  files:
-                    - '**/*'
-                  name: evaluation
-                  discard-paths: yes
-                  base-directory: .codebuild/evaluation
-                trend:
-                  files:
-                    - '**/*'
-                  name: trend
-                  discard-paths: yes
-                  base-directory: .codebuild/trend
-
-      - name: Build ID
-        if: always() && steps.cache-check.outputs.cache-hit != 'true'
-        run: echo "CodeBuild Build ID ${{ steps.codebuild.outputs.aws-build-id }}"
-
-      - name: Download CodeBuild artifacts
-        if: steps.cache-check.outputs.cache-hit != 'true'
         run: |
-          DOWNLOADS="${ACT_CODEBUILD_DIR:-${GITHUB_WORKSPACE}/.codebuild/downloads}"
-          mkdir -p "$DOWNLOADS"
-          PRIMARY_ARTIFACT_LOCATION=$(aws codebuild batch-get-builds \
-            --ids "${{ steps.codebuild.outputs.aws-build-id }}" \
-            --query 'builds[0].artifacts.location' \
-            --output text)
-          aws s3 cp "s3://${PRIMARY_ARTIFACT_LOCATION#arn:aws:s3:::}" "$DOWNLOADS/${{ env.CODEBUILD_PROJECT_NAME }}.zip"
-          SECONDARY_ARTIFACT_LOCATIONS=$(aws codebuild batch-get-builds \
-            --ids "${{ steps.codebuild.outputs.aws-build-id }}" \
-            --query 'builds[0].secondaryArtifacts[*].[artifactIdentifier, location]' \
-            --output json)
-          echo "$SECONDARY_ARTIFACT_LOCATIONS" | jq -r '.[] | @tsv' | while IFS=$'\t' read -r NAME LOCATION; do
-            echo "Downloading secondary artifact: $NAME"
-            aws s3 cp "s3://${LOCATION#arn:aws:s3:::}" "$DOWNLOADS/${NAME}.zip"
-          done
+          mkdir -p .codebuild
+          touch .codebuild/codebuild.out
+          mkdir -p .codebuild/evaluation
+          mkdir -p .codebuild/trend
+          mkdir -p .codebuild/missing
+          touch .codebuild/evaluation/evaluation_report.html
+          touch .codebuild/evaluation/metrics.yml
+          touch .codebuild/trend/trend_report.html
+          zip -r ${{ env.CODEBUILD_PROJECT_NAME }}.zip .codebuild
+          zip -r evaluation.zip .codebuild/evaluation
+          zip -r trend.zip .codebuild/trend
+          mkdir -p .codebuild/downloads
+          mv *.zip .codebuild/downloads
+          
+          
+      #   uses: aws-actions/aws-codebuild-run-build@d8279f349f3b1b84e834c30e47c20dcb8888b7e5 # v1.0.18
+      #   with:
+      #     project-name: ${{ env.CODEBUILD_PROJECT_NAME }}
+      #     source-version-override: ${{ github.sha }}
+      #     buildspec-override: |
+      #       version: 0.2
+      #       env:
+      #         variables:
+      #           GH_TOKEN: ${{ github.token }}
+      #       phases:
+      #         install:
+      #           commands:
+      #             - dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo || echo "dnf config-manager"
+      #             - dnf install -y 'dnf-command(config-manager)' gh || echo "dnf install failed"
+      #             - curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=$HOME/.local/bin:$PATH || "echo uv failed"
+      #         pre_build:
+      #           commands:
+      #             - echo "pre_build"
+      #             - git config --global --add safe.directory "/codebuild/output/srcDownload/src" # for running AWS CodeBuild locally
+      #         build:
+      #           commands:
+      #             - DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
+      #             - CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+      #             - CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
+      #             - IS_RELEASE=$([[ -n "$CURRENT_TAG" ]] && echo "true" || echo "false")
+      #             - IS_PRE_RELEASE=$([[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]] && echo "true" || echo "false")
+      #             - IS_PRE_MERGE=$([[ -z "$CURRENT_TAG" && "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]] && echo "true" || echo "false")
+      #             - if [[ "$IS_RELEASE" == "true" ]]; then echo "This is a release"; fi;
+      #             - if [[ "$IS_PRE_RELEASE" == "true" ]]; then echo "This is a pre-release"; fi;
+      #             - if [[ "$IS_PRE_MERGE" == "true" ]]; then echo "This is a pre-merge"; fi;
+      #             - mkdir -p .codebuild/evaluation
+      #             - mkdir -p .codebuild/trend
+      #             - mkdir -p .codebuild/missing
+      #             - touch .codebuild/evaluation/evaluation_report.html
+      #             - touch .codebuild/evaluation/metrics.yml
+      #             - touch .codebuild/trend/trend_report.html
+      #         post_build:
+      #           commands:
+      #             - echo "Build completed with status $CODEBUILD_BUILD_SUCCEEDING"
+      #             - cat ./.codebuild/codebuild.out
+      #       artifacts:
+      #         files:
+      #           - '**/*'
+      #         discard-paths: no
+      #         base-directory: .codebuild
+      #         secondary-artifacts:
+      #           evaluation:
+      #             files:
+      #               - '**/*'
+      #             name: evaluation
+      #             discard-paths: yes
+      #             base-directory: .codebuild/evaluation
+      #           trend:
+      #             files:
+      #               - '**/*'
+      #             name: trend
+      #             discard-paths: yes
+      #             base-directory: .codebuild/trend
+
+      # - name: Build ID
+      #   if: always() && steps.cache-check.outputs.cache-hit != 'true'
+      #   run: echo "CodeBuild Build ID ${{ steps.codebuild.outputs.aws-build-id }}"
+
+      # - name: Download CodeBuild artifacts
+      #   if: steps.cache-check.outputs.cache-hit != 'true'
+      #   run: |
+      #     DOWNLOADS="${ACT_CODEBUILD_DIR:-${GITHUB_WORKSPACE}/.codebuild/downloads}"
+      #     mkdir -p "$DOWNLOADS"
+      #     PRIMARY_ARTIFACT_LOCATION=$(aws codebuild batch-get-builds \
+      #       --ids "${{ steps.codebuild.outputs.aws-build-id }}" \
+      #       --query 'builds[0].artifacts.location' \
+      #       --output text)
+      #     aws s3 cp "s3://${PRIMARY_ARTIFACT_LOCATION#arn:aws:s3:::}" "$DOWNLOADS/${{ env.CODEBUILD_PROJECT_NAME }}.zip"
+      #     SECONDARY_ARTIFACT_LOCATIONS=$(aws codebuild batch-get-builds \
+      #       --ids "${{ steps.codebuild.outputs.aws-build-id }}" \
+      #       --query 'builds[0].secondaryArtifacts[*].[artifactIdentifier, location]' \
+      #       --output json)
+      #     echo "$SECONDARY_ARTIFACT_LOCATIONS" | jq -r '.[] | @tsv' | while IFS=$'\t' read -r NAME LOCATION; do
+      #       echo "Downloading secondary artifact: $NAME"
+      #       aws s3 cp "s3://${LOCATION#arn:aws:s3:::}" "$DOWNLOADS/${NAME}.zip"
+      #     done
 
       - name: List CodeBuild artifacts
         if: steps.cache-check.outputs.cache-hit != 'true'
