@@ -16,9 +16,10 @@ This guide documents the CI/CD infrastructure, GitHub Workflows, protected envir
 - [Repository Overview](#repository-overview)
 - [CI/CD Architecture](#cicd-architecture)
 - [Workflow Reference](#workflow-reference)
+  - [Release PR Workflow](#release-pr-workflow-release-pryml)
+  - [Tag Release Workflow](#tag-release-workflow-tag-on-mergeyml)
   - [CodeBuild Workflow](#codebuild-workflow-codebuildyml)
   - [Release Workflow](#release-workflow-releaseyml)
-  - [Changelog Workflow](#changelog-workflow-changelogyml)
 - [Protected Environments](#protected-environments)
 - [Secrets and Variables](#secrets-and-variables)
 - [Permissions Model](#permissions-model)
@@ -35,7 +36,7 @@ This repository publishes the **AI-DLC (AI-Driven Development Life Cycle)** meth
 
 - **Continuous integration** via AWS CodeBuild (evaluation and reporting)
 - **Release distribution** via GitHub Releases (zipped rule files)
-- **Changelog generation** via git-cliff (automated PRs from conventional commits)
+- **Changelog generation** via git-cliff (changelog-first: updated before release, included in the tagged commit)
 
 ```
 awslabs/aidlc-workflows/
@@ -45,7 +46,8 @@ awslabs/aidlc-workflows/
 │   └── workflows/
 │       ├── codebuild.yml         # CI via AWS CodeBuild
 │       ├── release.yml           # GitHub Release on tag push
-│       └── changelog.yml         # Changelog PR after release
+│       ├── release-pr.yml        # Changelog PR before release
+│       └── tag-on-merge.yml      # Auto-tag on release PR merge
 ├── aidlc-rules/                  # The distributable product
 │   ├── aws-aidlc-rules/          # Core workflow rules
 │   └── aws-aidlc-rule-details/   # Detailed rules by phase
@@ -61,40 +63,39 @@ awslabs/aidlc-workflows/
 
 ## CI/CD Architecture
 
-Three workflows form two distinct pipelines:
+Four workflows form two distinct pipelines:
 
-### Pipeline 1: Release (draft → review → publish)
+### Pipeline 1: Release (changelog-first)
 
 ```mermaid
 flowchart TD
-    A["git push tag v*"] --> B["release.yml"]
-    A --> C["codebuild.yml"]
+    A["workflow_dispatch\n(optional version input)"] --> B["release-pr.yml"]
+    B --> C["Determine version\n(input or git-cliff --bumped-version)"]
+    C --> D["Generate CHANGELOG.md\nwith git-cliff --tag vX.Y.Z"]
+    D --> E["Open PR: release/vX.Y.Z\nwith updated CHANGELOG"]
 
-    B --> D["Zip aidlc-rules/"]
-    D --> E["Create DRAFT GitHub Release\nwith ai-dlc-rules zip"]
+    E --> F["Human reviews\nand merges PR"]
 
-    C --> F{{"Manual approval\n(codebuild environment)"}}
-    F --> G["Run AWS CodeBuild\non tagged commit"]
-    G --> H["Download artifacts from S3"]
+    F --> G["tag-on-merge.yml"]
+    G --> H["Extract version from\nbranch name release/vX.Y.Z"]
+    H --> I["Create tag vX.Y.Z\non merge commit SHA"]
 
-    E -.->|"draft created\n(~30s)"| I{"Release state?"}
-    H --> I
+    I --> J["release.yml\n(draft release + rules zip)"]
+    I --> K["codebuild.yml"]
+    K --> L{{"Manual approval\n(codebuild environment)"}}
+    L --> M["Run AWS CodeBuild\n+ upload artifacts to draft"]
 
-    I -- "Draft exists\n(normal)" --> J["Upload artifacts\nto draft release"]
-    I -- "No release yet\n(codebuild finished first)" --> K["Create draft release\nwith build artifacts"]
-    I -- "Published\n(re-run)" --> L["Replace artifacts\nor warn if immutable"]
+    J --> N["Human reviews\nand publishes draft"]
+    M --> N
 
-    J --> M["Human reviews draft\nin GitHub UI"]
-    K --> M
-    L --> M
-
-    M --> N["Publish release"]
-    N --> O["changelog.yml"]
-    O --> P["Generate CHANGELOG.md\nvia git-cliff"]
-    P --> Q["Open PR with label\ndocumentation"]
-
-    R["workflow_dispatch\n(select tag in UI)"] -.->|"manual backup\ntrigger"| F
+    O["workflow_dispatch\n(select tag in UI)"] -.->|"manual backup\ntrigger"| L
 ```
+
+The release flow is **changelog-first**: the CHANGELOG is updated *before* the tag is created, so the tagged commit always contains its own changelog entry. The flow has three human touchpoints:
+
+1. **Merge the release PR** — reviews the changelog, triggers automatic tagging
+2. **Approve the CodeBuild environment** — gates access to AWS credentials for the build
+3. **Publish the draft release** — reviews artifacts, makes the release public
 
 Both `release.yml` and `codebuild.yml` trigger independently on the same `v*` tag push. The `codebuild.yml` workflow requires **manual approval** via the `codebuild` protected environment before the build proceeds. The upload step handles all release states resiliently:
 - **Draft exists** (normal case) — `release.yml` finishes in ~30s creating the draft; CodeBuild takes minutes, so the draft is ready when artifacts are uploaded
@@ -113,11 +114,66 @@ flowchart LR
     D --> E["Upload workflow artifacts"]
 ```
 
-The `changelog.yml` workflow triggers on `release: published` (not `created`), so draft releases do not trigger changelog generation prematurely.
-
 ---
 
 ## Workflow Reference
+
+### Release PR Workflow (`release-pr.yml`)
+
+| Property | Value |
+|----------|-------|
+| **File** | `.github/workflows/release-pr.yml` |
+| **Trigger** | `workflow_dispatch` with optional `version` input |
+| **Environment** | _(none)_ |
+| **Runner** | `ubuntu-latest` |
+
+**Purpose:** Generates an updated `CHANGELOG.md` from conventional commits using git-cliff and opens a PR on a `release/vX.Y.Z` branch. This is the first step in the changelog-first release flow.
+
+**Job: `release-pr` ("Create Release PR")**
+
+| Step | Name | Action |
+|------|------|--------|
+| 1 | Checkout code | `actions/checkout` with `fetch-depth: 0` (full history for git-cliff) |
+| 2 | Install git-cliff | `orhun/git-cliff-action` to make the CLI available |
+| 3 | Determine version | Use `inputs.version` or `git-cliff --bumped-version` for auto-detection |
+| 4 | Check tag does not exist | Fail early if the target tag already exists |
+| 5 | Generate changelog | `orhun/git-cliff-action` with `--tag vX.Y.Z` to generate `CHANGELOG.md` |
+| 6 | Create release PR | Commit, push `release/vX.Y.Z` branch, open PR with label `release` |
+
+**Version detection:** If no version is specified, `git-cliff --bumped-version` determines the next version from conventional commit prefixes. The `[bump]` config in `cliff.toml` controls the rules (e.g., `feat` → minor bump, breaking change → major bump).
+
+**External actions (SHA-pinned):**
+
+| Action | Version | SHA |
+|--------|---------|-----|
+| `actions/checkout` | v6.0.1 | `8e8c483db84b4bee98b60c0593521ed34d9990e8` |
+| `orhun/git-cliff-action` | v4.7.0 | `e16f179f0be49ecdfe63753837f20b9531642772` |
+
+---
+
+### Tag Release Workflow (`tag-on-merge.yml`)
+
+| Property | Value |
+|----------|-------|
+| **File** | `.github/workflows/tag-on-merge.yml` |
+| **Trigger** | `pull_request: types: [closed]` |
+| **Condition** | PR was merged AND branch name starts with `release/v` |
+| **Environment** | _(none)_ |
+| **Runner** | `ubuntu-latest` |
+
+**Purpose:** Automatically creates a version tag on the merge commit when a release PR is merged. The tag triggers `release.yml` and `codebuild.yml`.
+
+**Job: `tag` ("Create Release Tag")**
+
+| Step | Name | Action |
+|------|------|--------|
+| 1 | Create tag | Extract version from branch name, verify tag doesn't exist, create via GitHub API |
+
+**Tag creation:** Uses `gh api repos/.../git/refs` to create a lightweight tag. Tags created via the API trigger `on: push: tags` workflows.
+
+**Security:** The branch name `release/vX.Y.Z` is passed through an environment variable (not directly interpolated) to prevent command injection. The job-level `if` condition uses `github.event.pull_request.merged == true` to ensure only merged PRs trigger tagging.
+
+---
 
 ### CodeBuild Workflow (`codebuild.yml`)
 
@@ -202,36 +258,6 @@ The `changelog.yml` workflow triggers on `release: published` (not `created`), s
 
 ---
 
-### Changelog Workflow (`changelog.yml`)
-
-| Property | Value |
-|----------|-------|
-| **File** | `.github/workflows/changelog.yml` |
-| **Trigger** | `release` event, type `published` |
-| **Environment** | _(none)_ |
-| **Runner** | `ubuntu-latest` |
-
-**Purpose:** After a release is published, generates `CHANGELOG.md` from conventional commits using git-cliff and opens a PR.
-
-**Job: `changelog` ("Update Changelog")**
-
-| Step | Name | Action |
-|------|------|--------|
-| 1 | Checkout code | `actions/checkout` with `fetch-depth: 0` |
-| 2 | Generate changelog | `orhun/git-cliff-action` with `cliff.toml` config |
-| 3 | Create Pull Request | Create branch `changelog/{tag}`, commit, push, `gh pr create` with label `documentation` |
-
-The PR is authored by `github-actions[bot]` and titled `docs: update changelog for {tag}`.
-
-**External actions (SHA-pinned):**
-
-| Action | Version | SHA |
-|--------|---------|-----|
-| `actions/checkout` | v6.0.1 | `8e8c483db84b4bee98b60c0593521ed34d9990e8` |
-| `orhun/git-cliff-action` | v4.7.0 | `e16f179f0be49ecdfe63753837f20b9531642772` |
-
----
-
 ## Protected Environments
 
 | Environment | Used By | Purpose |
@@ -253,7 +279,7 @@ Environment protection rules (configured in GitHub repository settings) may incl
 | Secret | Scope | Used By | Purpose |
 |--------|-------|---------|---------|
 | `AWS_CODEBUILD_ROLE_ARN` | Environment (`codebuild`) | `codebuild.yml` | IAM Role ARN for OIDC-based AWS STS role assumption |
-| `GITHUB_TOKEN` | Automatic (GitHub-provided) | `release.yml`, `changelog.yml` | Authenticate GitHub API calls (release creation, PR creation) |
+| `GITHUB_TOKEN` | Automatic (GitHub-provided) | `release.yml`, `release-pr.yml`, `tag-on-merge.yml` | Authenticate GitHub API calls (release creation, PR creation, tag creation) |
 
 The `codebuild.yml` workflow also uses `github.token` (the automatic token, accessed without the `secrets.` prefix) for cache management and release asset uploads.
 
@@ -277,7 +303,8 @@ All three variables have sensible defaults via `${{ vars.VAR || 'default' }}` sy
 |----------|-------------|
 | `codebuild.yml` | All 16 scopes explicitly set to `none` |
 | `release.yml` | `contents: write` |
-| `changelog.yml` | `contents: write`, `pull-requests: write` |
+| `release-pr.yml` | `contents: write`, `pull-requests: write` |
+| `tag-on-merge.yml` | `contents: write` |
 
 ### Job-level permissions (overrides)
 
@@ -323,34 +350,30 @@ Defined in `.github/CODEOWNERS`:
 
 ## Release Process
 
-Releases are tag-driven with no separate version file. The process uses draft releases for human review before publishing.
+Releases follow a **changelog-first** flow: the CHANGELOG is updated *before* the tag is created, so the tagged commit always contains its own changelog entry. The process has three human touchpoints (merge PR, approve CodeBuild, publish release).
 
-1. **Create and push a version tag:**
-   ```bash
-   git tag v1.2.0
-   git push origin v1.2.0
-   ```
+1. **Dispatch the Release PR workflow** via the GitHub Actions UI:
+   - Navigate to Actions → Release PR → Run workflow
+   - Optionally specify a version (e.g., `0.2.0`); leave blank to auto-determine from conventional commits
+   - `release-pr.yml` generates `CHANGELOG.md` and opens a PR on branch `release/v1.2.0` with label `release`
 
-2. **`release.yml` runs automatically:**
+2. **Review and merge the release PR:**
+   - Verify the changelog content is correct
+   - Merge the PR (requires `@awslabs/aidlc-admins` approval since `CHANGELOG.md` is owned by them)
+   - `tag-on-merge.yml` automatically creates tag `v1.2.0` on the merge commit
+
+3. **`release.yml` runs automatically** (triggered by the tag push):
    - Zips `aidlc-rules/` into `ai-dlc-rules-v1.2.0.zip`
    - Creates a **draft** GitHub Release named "AI-DLC Workflow v1.2.0" with the zip attached
 
-3. **`codebuild.yml` runs automatically** (requires `codebuild` environment approval):
+4. **`codebuild.yml` runs automatically** (requires `codebuild` environment approval):
    - Runs CodeBuild on the tagged commit
    - Downloads build artifacts (primary, evaluation, trend)
    - Attaches artifacts to the draft release (or creates a draft if one doesn't exist yet)
 
-4. **Review the draft release** in the GitHub UI:
+5. **Publish the release** by clicking "Publish release" in the GitHub UI:
    - Verify all expected artifacts are attached (rules zip + build artifacts)
    - Review release notes and edit if needed
-
-5. **Publish the release** by clicking "Publish release" in the GitHub UI.
-
-6. **`changelog.yml` runs automatically** (triggered by the release `published` event):
-   - Generates `CHANGELOG.md` from all conventional commits using git-cliff
-   - Opens a PR on branch `changelog/v1.2.0` with label `documentation`
-
-7. **Merge the changelog PR** to complete the release cycle.
 
 **Note:** The `codebuild` protected environment may need its deployment branch rules updated to allow `v*` tags (in addition to `main`) for tag-triggered builds to proceed.
 
@@ -358,7 +381,7 @@ Releases are tag-driven with no separate version file. The process uses draft re
 
 ## Changelog Configuration
 
-Defined in `cliff.toml` (used by `changelog.yml`):
+Defined in `cliff.toml` (used by `release-pr.yml`):
 
 | Setting | Value |
 |---------|-------|
@@ -380,4 +403,19 @@ Defined in `cliff.toml` (used by `changelog.yml`):
 | `ci` | CI/CD |
 | `chore` | Miscellaneous |
 
+**Filtered commits:**
+
+| Pattern | Action |
+|---------|--------|
+| `docs: update changelog` | Skipped (noise from previous release flow) |
+
 Unconventional commits are filtered out (`filter_unconventional = true`).
+
+**Version bump rules** (defined in `[bump]` section):
+
+| Rule | Effect |
+|------|--------|
+| `features_always_bump_minor = true` | `feat:` commits trigger a minor version bump |
+| `breaking_always_bump_major = true` | Breaking changes trigger a major version bump |
+
+These rules are used by `git-cliff --bumped-version` when auto-determining the next version in `release-pr.yml`.

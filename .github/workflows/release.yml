@@ -1,7 +1,7 @@
 # Release Pipeline
 #
 # This workflow handles versioning and distribution of the AI-DLC methodology.
-# It triggers when you push a version tag and:
+# It triggers when a version tag is pushed (by tag-on-merge.yml or manually) and:
 #
 #   1. Creates distribution artifact:
 #      - ai-dlc-rules-vX.X.X.zip (Rules format for Amazon Q, Kiro, etc.)
@@ -9,11 +9,11 @@
 #
 # The release is created as a draft so that build artifacts from CodeBuild
 # (codebuild.yml) can be attached before a human reviews and publishes it.
-# Publishing the release triggers changelog.yml to generate the changelog.
 #
-# Usage:
-#   git tag v1.2.0
-#   git push origin v1.2.0
+# Normal flow:
+#   1. release-pr.yml creates a PR with CHANGELOG update (manual dispatch)
+#   2. Human reviews and merges the release PR
+#   3. tag-on-merge.yml auto-tags the merge commit → triggers this workflow
 
 name: Release
 
