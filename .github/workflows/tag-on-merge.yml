@@ -5,9 +5,9 @@
 #   - The PR was actually merged (not just closed)
 #   - The branch name starts with "release/v"
 #
-# The tag is created on the merge commit SHA, which triggers:
-#   - release.yml (draft GitHub Release with rules zip)
-#   - codebuild.yml (build artifacts attached to the draft)
+# After tagging, dispatches release.yml and codebuild.yml with --ref set to
+# the new tag. This avoids the GITHUB_TOKEN limitation where tag push events
+# don't trigger other workflows (workflow_dispatch is exempt).
 
 name: Tag Release
 
@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   tag:
@@ -47,3 +48,21 @@ jobs:
             -f sha="$SHA"
 
           echo "Tag $TAG created on $SHA"
+
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          TAG="${BRANCH#release/}"
+          echo "Dispatching release.yml on ref $TAG"
+          gh workflow run release.yml --ref "$TAG"
+
+      - name: Dispatch codebuild workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          TAG="${BRANCH#release/}"
+          echo "Dispatching codebuild.yml on ref $TAG"
+          gh workflow run codebuild.yml --ref "$TAG"

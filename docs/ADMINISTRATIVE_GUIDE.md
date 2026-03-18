@@ -80,15 +80,17 @@ flowchart TD
     G --> H["Extract version from\nbranch name release/vX.Y.Z"]
     H --> I["Create tag vX.Y.Z\non merge commit SHA"]
 
-    I --> J["release.yml\n(draft release + rules zip)"]
-    I --> K["codebuild.yml"]
-    K --> L{{"Manual approval\n(codebuild environment)"}}
-    L --> M["Run AWS CodeBuild\n+ upload artifacts to draft"]
+    I --> J["Dispatch release.yml\n(--ref vX.Y.Z)"]
+    I --> K["Dispatch codebuild.yml\n(--ref vX.Y.Z)"]
 
-    J --> N["Human reviews\nand publishes draft"]
-    M --> N
+    J --> L["release.yml\n(draft release + rules zip)"]
+    K --> M{{"Manual approval\n(codebuild environment)"}}
+    M --> O["Run AWS CodeBuild\n+ upload artifacts to draft"]
 
-    O["workflow_dispatch\n(select tag in UI)"] -.->|"manual backup\ntrigger"| L
+    L --> N["Human reviews\nand publishes draft"]
+    O --> N
+
+    P["workflow_dispatch\n(select tag in UI)"] -.->|"manual backup\ntrigger"| M
 ```
 
 The release flow is **changelog-first**: the CHANGELOG is updated *before* the tag is created, so the tagged commit always contains its own changelog entry. The flow has three human touchpoints:
@@ -97,7 +99,7 @@ The release flow is **changelog-first**: the CHANGELOG is updated *before* the t
 2. **Approve the CodeBuild environment** — gates access to AWS credentials for the build
 3. **Publish the draft release** — reviews artifacts, makes the release public
 
-Both `release.yml` and `codebuild.yml` trigger independently on the same `v*` tag push. The `codebuild.yml` workflow requires **manual approval** via the `codebuild` protected environment before the build proceeds. The upload step handles all release states resiliently:
+`tag-on-merge.yml` explicitly dispatches `release.yml` and `codebuild.yml` via `gh workflow run --ref vX.Y.Z` after creating the tag. This is necessary because tags created with `GITHUB_TOKEN` do not trigger `on: push: tags` events — but `workflow_dispatch` is exempt from this limitation. Both workflows also retain `push: tags: v*` as a fallback for manual tag pushes. The `codebuild.yml` workflow requires **manual approval** via the `codebuild` protected environment before the build proceeds. The upload step handles all release states resiliently:
 - **Draft exists** (normal case) — `release.yml` finishes in ~30s creating the draft; CodeBuild takes minutes, so the draft is ready when artifacts are uploaded
 - **No release yet** (codebuild finished first) — creates a draft with build artifacts; `release.yml` will update it later
 - **Already published** (re-run) — attempts to replace artifacts, warns gracefully if immutable
@@ -161,15 +163,19 @@ flowchart LR
 | **Environment** | _(none)_ |
 | **Runner** | `ubuntu-latest` |
 
-**Purpose:** Automatically creates a version tag on the merge commit when a release PR is merged. The tag triggers `release.yml` and `codebuild.yml`.
+**Purpose:** Automatically creates a version tag on the merge commit when a release PR is merged, then dispatches `release.yml` and `codebuild.yml`.
 
 **Job: `tag` ("Create Release Tag")**
 
 | Step | Name | Action |
 |------|------|--------|
 | 1 | Create tag | Extract version from branch name, verify tag doesn't exist, create via GitHub API |
+| 2 | Dispatch release workflow | `gh workflow run release.yml --ref $TAG` |
+| 3 | Dispatch codebuild workflow | `gh workflow run codebuild.yml --ref $TAG` |
 
-**Tag creation:** Uses `gh api repos/.../git/refs` to create a lightweight tag. Tags created via the API trigger `on: push: tags` workflows.
+**Tag creation:** Uses `gh api repos/.../git/refs` to create a lightweight tag.
+
+**Workflow dispatch:** Tags created with `GITHUB_TOKEN` do not trigger `on: push: tags` events in other workflows. To work around this, `tag-on-merge.yml` explicitly dispatches `release.yml` and `codebuild.yml` via `gh workflow run --ref $TAG`. The `workflow_dispatch` event is exempt from this `GITHUB_TOKEN` limitation. Since `--ref` is set to the tag, both dispatched workflows see `github.ref = refs/tags/vX.Y.Z` — identical to a real tag push.
 
 **Security:** The branch name `release/vX.Y.Z` is passed through an environment variable (not directly interpolated) to prevent command injection. The job-level `if` condition uses `github.event.pull_request.merged == true` to ensure only merged PRs trigger tagging.
 
@@ -232,11 +238,11 @@ flowchart LR
 | Property | Value |
 |----------|-------|
 | **File** | `.github/workflows/release.yml` |
-| **Trigger** | `push` on tags matching `v*` |
+| **Triggers** | `workflow_dispatch` (dispatched by `tag-on-merge.yml`), `push` on tags matching `v*` (fallback for manual tag pushes) |
 | **Environment** | _(none)_ |
 | **Runner** | `ubuntu-latest` |
 
-**Purpose:** Creates a **draft** GitHub Release with a zip of `aidlc-rules/` when a version tag is pushed. The release is kept as a draft so that CodeBuild artifacts can be attached and reviewed before publishing.
+**Purpose:** Creates a **draft** GitHub Release with a zip of `aidlc-rules/` when dispatched or when a version tag is pushed. The release is kept as a draft so that CodeBuild artifacts can be attached and reviewed before publishing.
 
 **Job: `release` ("Create Release")**
 
@@ -279,7 +285,7 @@ Environment protection rules (configured in GitHub repository settings) may incl
 | Secret | Scope | Used By | Purpose |
 |--------|-------|---------|---------|
 | `AWS_CODEBUILD_ROLE_ARN` | Environment (`codebuild`) | `codebuild.yml` | IAM Role ARN for OIDC-based AWS STS role assumption |
-| `GITHUB_TOKEN` | Automatic (GitHub-provided) | `release.yml`, `release-pr.yml`, `tag-on-merge.yml` | Authenticate GitHub API calls (release creation, PR creation, tag creation) |
+| `GITHUB_TOKEN` | Automatic (GitHub-provided) | `release.yml`, `release-pr.yml`, `tag-on-merge.yml` | Authenticate GitHub API calls (release creation, PR creation, tag creation, workflow dispatch) |
 
 The `codebuild.yml` workflow also uses `github.token` (the automatic token, accessed without the `secrets.` prefix) for cache management and release asset uploads.
 
@@ -304,7 +310,7 @@ All three variables have sensible defaults via `${{ vars.VAR || 'default' }}` sy
 | `codebuild.yml` | All 16 scopes explicitly set to `none` |
 | `release.yml` | `contents: write` |
 | `release-pr.yml` | `contents: write`, `pull-requests: write` |
-| `tag-on-merge.yml` | `contents: write` |
+| `tag-on-merge.yml` | `contents: write`, `actions: write` |
 
 ### Job-level permissions (overrides)
 
@@ -360,13 +366,13 @@ Releases follow a **changelog-first** flow: the CHANGELOG is updated *before* th
 2. **Review and merge the release PR:**
    - Verify the changelog content is correct
    - Merge the PR (requires `@awslabs/aidlc-admins` approval since `CHANGELOG.md` is owned by them)
-   - `tag-on-merge.yml` automatically creates tag `v1.2.0` on the merge commit
+   - `tag-on-merge.yml` automatically creates tag `v1.2.0` on the merge commit and dispatches the release and build workflows
 
-3. **`release.yml` runs automatically** (triggered by the tag push):
+3. **`release.yml` runs automatically** (dispatched by `tag-on-merge.yml` with `--ref v1.2.0`):
    - Zips `aidlc-rules/` into `ai-dlc-rules-v1.2.0.zip`
    - Creates a **draft** GitHub Release named "AI-DLC Workflow v1.2.0" with the zip attached
 
-4. **`codebuild.yml` runs automatically** (requires `codebuild` environment approval):
+4. **`codebuild.yml` runs automatically** (dispatched by `tag-on-merge.yml`; requires `codebuild` environment approval):
    - Runs CodeBuild on the tagged commit
    - Downloads build artifacts (primary, evaluation, trend)
    - Attaches artifacts to the draft release (or creates a draft if one doesn't exist yet)

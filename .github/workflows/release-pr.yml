@@ -58,19 +58,19 @@ jobs:
           else
             VERSION=$(git-cliff --bumped-version 2>/dev/null || echo "")
             if [[ -z "$VERSION" ]]; then
-              # Fall back to patch bump from latest tag                                                                                                                                
-              LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")                                                                                                      
-              if [[ -n "$LATEST_TAG" ]]; then                                                                                                                                          
-                LATEST="${LATEST_TAG#v}"                                                                                                                                               
-                MAJOR="${LATEST%%.*}"                                                                                                                                                  
-                REST="${LATEST#*.}"                                                                                                                                                    
-                MINOR="${REST%%.*}"                                                                                                                                                    
-                PATCH="${REST#*.}"                                                                                                                                                     
-                PATCH=$((PATCH + 1))                                                                                                                                                   
-                VERSION="${MAJOR}.${MINOR}.${PATCH}"                                                                                                                                   
-                echo "WARNING: No conventional commits detected — falling back to patch bump: $VERSION"                                                                                
-              else                                                                                                                                                                     
-                echo "WARNING: No conventional commits and no existing tags — nothing to release"                                                                                      
+              # Fall back to patch bump from latest tag
+              LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+              if [[ -n "$LATEST_TAG" ]]; then
+                LATEST="${LATEST_TAG#v}"
+                MAJOR="${LATEST%%.*}"
+                REST="${LATEST#*.}"
+                MINOR="${REST%%.*}"
+                PATCH="${REST#*.}"
+                PATCH=$((PATCH + 1))
+                VERSION="${MAJOR}.${MINOR}.${PATCH}"
+                echo "WARNING: No conventional commits detected — falling back to patch bump: $VERSION"
+              else
+                echo "WARNING: No conventional commits and no existing tags — nothing to release"
                 exit 0
               fi
             fi
@@ -120,6 +120,11 @@ jobs:
           git commit -m "docs: update changelog for $TAG"
           git push origin "$BRANCH"
 
+          LABEL_FLAG=""
+          if gh label list --search "release" --json name --jq '.[].name' | grep -qx "release"; then
+            LABEL_FLAG="--label release"
+          fi
+
           gh pr create \
             --title "release: $TAG" \
             --body "$(cat <<EOF
@@ -134,4 +139,4 @@ jobs:
           After both workflows complete, review and publish the draft release.
           EOF
           )" \
-            --label "release"
+            $LABEL_FLAG
