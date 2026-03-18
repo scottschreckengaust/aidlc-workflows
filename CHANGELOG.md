@@ -1,6 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.1.7] - 2026-03-18
+
+
+### Bug Fixes
+
+- Enhance versioning fallback in release workflowf
+- version stripping in release workflow
+- revert CHANGELOG
+
+
+### Documentation
+
+- add developer's guide for running CodeBuild locally (#94)
+
+
+### Features
+
+- add code owners (#112)
 ## [0.1.6] - 2026-03-05
 
 
