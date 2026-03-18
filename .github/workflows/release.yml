@@ -5,9 +5,11 @@
 #
 #   1. Creates distribution artifact:
 #      - ai-dlc-rules-vX.X.X.zip (Rules format for Amazon Q, Kiro, etc.)
-#   2. Publishes a GitHub Release with artifact attached
+#   2. Creates a draft GitHub Release with artifact attached
 #
-# Note: Changelog is generated separately by changelog.yml after release is published.
+# The release is created as a draft so that build artifacts from CodeBuild
+# (codebuild.yml) can be attached before a human reviews and publishes it.
+# Publishing the release triggers changelog.yml to generate the changelog.
 #
 # Usage:
 #   git tag v1.2.0
@@ -49,6 +51,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
+          draft: true
           name: "AI-DLC Workflow v${{ steps.version.outputs.version }}"
           body: |
             Release v${{ steps.version.outputs.version }}

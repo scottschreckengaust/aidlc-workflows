@@ -63,23 +63,35 @@ awslabs/aidlc-workflows/
 
 Three workflows form two distinct pipelines:
 
-### Pipeline 1: Release (event-driven chain)
+### Pipeline 1: Release (draft → review → publish)
 
 ```
-git push tag v* ──→ release.yml (creates GitHub Release with zip artifact)
-                         │
-                         ▼ (release published event)
-                    changelog.yml (opens PR with updated CHANGELOG.md)
+git push tag v* ──┬──→ release.yml (creates DRAFT release with ai-dlc-rules zip)
+                  │
+                  └──→ codebuild.yml (runs CodeBuild on tag, uploads artifacts to draft)
+                            │
+                  ┌─────────┘
+                  ▼
+        Human reviews draft release in GitHub UI
+                  │
+                  ▼ (publishes the release)
+                  │
+                  └──→ changelog.yml (opens PR with updated CHANGELOG.md)
 ```
+
+Both `release.yml` and `codebuild.yml` trigger independently on the same `v*` tag push. The `codebuild.yml` workflow handles all release states resiliently:
+- **Draft exists** (normal case) — attaches build artifacts to the draft
+- **No release yet** (codebuild finished first) — creates a draft with build artifacts
+- **Already published** (re-run) — attempts to replace artifacts, warns gracefully if immutable
 
 ### Pipeline 2: Continuous Integration
 
 ```
-git push main ────→ codebuild.yml (runs CodeBuild, uploads artifacts)
+git push main ────→ codebuild.yml (runs CodeBuild, uploads workflow artifacts)
 workflow_dispatch ─→ codebuild.yml
 ```
 
-The release and changelog workflows are **decoupled** — `release.yml` publishes a GitHub Release, and `changelog.yml` independently reacts to the `release: published` event. Neither workflow calls the other directly.
+The `changelog.yml` workflow triggers on `release: published` (not `created`), so draft releases do not trigger changelog generation prematurely.
 
 ---
 
@@ -90,12 +102,12 @@ The release and changelog workflows are **decoupled** — `release.yml` publishe
 | Property | Value |
 |----------|-------|
 | **File** | `.github/workflows/codebuild.yml` |
-| **Triggers** | `push` to `main`, `workflow_dispatch` (manual) |
-| **Environment** | `codebuild` (protected) |
+| **Triggers** | `push` to `main`, `push` tags `v*`, `workflow_dispatch` (manual) |
+| **Environment** | `codebuild` (protected, manual approval) |
 | **Runner** | `ubuntu-latest` |
 | **Concurrency** | Groups by `{workflow}-{ref}`, cancels in-progress |
 
-**Purpose:** Runs an AWS CodeBuild project, downloads primary and secondary artifacts from S3, caches them in GitHub Actions cache, and uploads them as workflow artifacts.
+**Purpose:** Runs an AWS CodeBuild project, downloads primary and secondary artifacts from S3, caches them in GitHub Actions cache, uploads them as workflow artifacts, and (on tag pushes) attaches them to the GitHub Release.
 
 **Job: `build`**
 
@@ -113,6 +125,7 @@ The release and changelog workflows are **decoupled** — `release.yml` publishe
 | 10 | Upload primary artifact | `!env.ACT` | `actions/upload-artifact` for `{project}.zip` |
 | 11 | Upload evaluation artifact | `!env.ACT` | `actions/upload-artifact` for `evaluation.zip` |
 | 12 | Upload trend artifact | `!env.ACT` | `actions/upload-artifact` for `trend.zip` |
+| 13 | Upload artifacts to release | tag push (`v*`) | Attach build artifacts to GitHub Release (draft or published) |
 
 **Caching strategy:** The cache key `{project}-{branch}-{sha}` ensures that the same commit on the same branch is never built twice. On cache hit, steps 3–9 are skipped entirely.
 
@@ -145,7 +158,7 @@ The release and changelog workflows are **decoupled** — `release.yml` publishe
 | **Environment** | _(none)_ |
 | **Runner** | `ubuntu-latest` |
 
-**Purpose:** Creates a GitHub Release with a zip of `aidlc-rules/` when a version tag is pushed.
+**Purpose:** Creates a **draft** GitHub Release with a zip of `aidlc-rules/` when a version tag is pushed. The release is kept as a draft so that CodeBuild artifacts can be attached and reviewed before publishing.
 
 **Job: `release` ("Create Release")**
 
@@ -154,7 +167,7 @@ The release and changelog workflows are **decoupled** — `release.yml` publishe
 | 1 | Checkout code | `actions/checkout` with `fetch-depth: 0` |
 | 2 | Extract version | Parse `GITHUB_REF` into `version` (no `v`) and `tag` (with `v`) |
 | 3 | Create release artifact | `zip -r ai-dlc-rules-v{VERSION}.zip aidlc-rules/` |
-| 4 | Create GitHub Release | `softprops/action-gh-release` with zip attached |
+| 4 | Create GitHub Release | `softprops/action-gh-release` with `draft: true` and zip attached |
 
 **Release naming:** `AI-DLC Workflow v{VERSION}` (e.g., `AI-DLC Workflow v0.1.6`)
 
@@ -220,7 +233,7 @@ Environment protection rules (configured in GitHub repository settings) may incl
 | `AWS_CODEBUILD_ROLE_ARN` | Environment (`codebuild`) | `codebuild.yml` | IAM Role ARN for OIDC-based AWS STS role assumption |
 | `GITHUB_TOKEN` | Automatic (GitHub-provided) | `release.yml`, `changelog.yml` | Authenticate GitHub API calls (release creation, PR creation) |
 
-The `codebuild.yml` workflow also uses `github.token` (the automatic token, accessed without the `secrets.` prefix) for cache list and cleanup operations.
+The `codebuild.yml` workflow also uses `github.token` (the automatic token, accessed without the `secrets.` prefix) for cache management and release asset uploads.
 
 ### Repository Variables
 
@@ -248,7 +261,7 @@ All three variables have sensible defaults via `${{ vars.VAR || 'default' }}` sy
 
 | Workflow | Job | Permissions | Rationale |
 |----------|-----|-------------|-----------|
-| `codebuild.yml` | `build` | `actions: write`, `contents: read`, `id-token: write` | Cache management, source checkout, OIDC token for AWS STS |
+| `codebuild.yml` | `build` | `actions: write`, `contents: write`, `id-token: write` | Cache management, release asset upload, OIDC token for AWS STS |
 
 The `codebuild.yml` workflow follows a **deny-all-then-grant** pattern: every permission scope is set to `none` at the workflow level, then only the 3 required scopes are granted at the job level. This is the strictest possible configuration and prevents privilege escalation from compromised steps.
 
@@ -260,7 +273,7 @@ The `codebuild.yml` workflow follows a **deny-all-then-grant** pattern: every pe
 |---------|----------------|
 | **Supply-chain protection** | All external actions pinned to full commit SHAs (not mutable version tags) |
 | **AWS authentication** | OIDC-based role assumption via `id-token: write` — no static credentials stored |
-| **Least-privilege tokens** | `codebuild.yml` explicitly denies all 16 permission scopes, grants only 3 at job level |
+| **Least-privilege tokens** | `codebuild.yml` explicitly denies all 16 permission scopes at workflow level, grants only 3 at job level |
 | **Environment protection** | `codebuild` environment gates AWS credential access with potential reviewer/branch rules |
 | **Concurrency control** | `codebuild.yml` cancels in-progress runs for the same branch |
 | **Code ownership** | `.github/` (including workflows) owned exclusively by `@awslabs/aidlc-admins` via CODEOWNERS |
@@ -288,7 +301,7 @@ Defined in `.github/CODEOWNERS`:
 
 ## Release Process
 
-Releases are tag-driven with no separate version file:
+Releases are tag-driven with no separate version file. The process uses draft releases for human review before publishing.
 
 1. **Create and push a version tag:**
    ```bash
@@ -298,13 +311,26 @@ Releases are tag-driven with no separate version file:
 
 2. **`release.yml` runs automatically:**
    - Zips `aidlc-rules/` into `ai-dlc-rules-v1.2.0.zip`
-   - Creates GitHub Release named "AI-DLC Workflow v1.2.0" with the zip attached
+   - Creates a **draft** GitHub Release named "AI-DLC Workflow v1.2.0" with the zip attached
 
-3. **`changelog.yml` runs automatically** (triggered by the release `published` event):
+3. **`codebuild.yml` runs automatically** (requires `codebuild` environment approval):
+   - Runs CodeBuild on the tagged commit
+   - Downloads build artifacts (primary, evaluation, trend)
+   - Attaches artifacts to the draft release (or creates a draft if one doesn't exist yet)
+
+4. **Review the draft release** in the GitHub UI:
+   - Verify all expected artifacts are attached (rules zip + build artifacts)
+   - Review release notes and edit if needed
+
+5. **Publish the release** by clicking "Publish release" in the GitHub UI.
+
+6. **`changelog.yml` runs automatically** (triggered by the release `published` event):
    - Generates `CHANGELOG.md` from all conventional commits using git-cliff
    - Opens a PR on branch `changelog/v1.2.0` with label `documentation`
 
-4. **Merge the changelog PR** to complete the release cycle.
+7. **Merge the changelog PR** to complete the release cycle.
+
+**Note:** The `codebuild` protected environment may need its deployment branch rules updated to allow `v*` tags (in addition to `main`) for tag-triggered builds to proceed.
 
 ---
 
