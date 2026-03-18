@@ -137,12 +137,12 @@ flowchart LR
 |------|------|--------|
 | 1 | Checkout code | `actions/checkout` with `fetch-depth: 0` (full history for git-cliff) |
 | 2 | Install git-cliff | `orhun/git-cliff-action` to make the CLI available |
-| 3 | Determine version | Use `inputs.version` or `git-cliff --bumped-version` for auto-detection |
+| 3 | Determine version | Use `inputs.version` (with semver validation) or `git-cliff --bumped-version` for auto-detection; falls back to patch bump from latest tag |
 | 4 | Check tag does not exist | Fail early if the target tag already exists |
 | 5 | Generate changelog | `orhun/git-cliff-action` with `--tag vX.Y.Z` to generate `CHANGELOG.md` |
-| 6 | Create release PR | Commit, push `release/vX.Y.Z` branch, open PR with label `release` |
+| 6 | Create release PR | Commit, push `release/vX.Y.Z` branch, open PR (with label `release` if it exists in the repo) |
 
-**Version detection:** If no version is specified, `git-cliff --bumped-version` determines the next version from conventional commit prefixes. The `[bump]` config in `cliff.toml` controls the rules (e.g., `feat` → minor bump, breaking change → major bump).
+**Version detection:** If a version is specified, it must be valid semver (`MAJOR.MINOR.PATCH`); both `v0.2.0` and `0.2.0` are accepted. If no version is specified, `git-cliff --bumped-version` determines the next version from conventional commit prefixes. The `[bump]` config in `cliff.toml` controls the rules (e.g., `feat` → minor bump, breaking change → major bump). If no conventional commits are found, the workflow falls back to a patch bump from the latest tag. If no tags exist at all, it exits cleanly with a warning (no PR is created).
 
 **External actions (SHA-pinned):**
 
@@ -170,8 +170,8 @@ flowchart LR
 | Step | Name | Action |
 |------|------|--------|
 | 1 | Create tag | Extract version from branch name, verify tag doesn't exist, create via GitHub API |
-| 2 | Dispatch release workflow | `gh workflow run release.yml --ref $TAG` |
-| 3 | Dispatch codebuild workflow | `gh workflow run codebuild.yml --ref $TAG` |
+| 2 | Dispatch release workflow | `gh workflow run release.yml --ref $TAG --repo $REPO` |
+| 3 | Dispatch codebuild workflow | `gh workflow run codebuild.yml --ref $TAG --repo $REPO` |
 
 **Tag creation:** Uses `gh api repos/.../git/refs` to create a lightweight tag.
 
@@ -186,7 +186,7 @@ flowchart LR
 | Property | Value |
 |----------|-------|
 | **File** | `.github/workflows/codebuild.yml` |
-| **Triggers** | `push` to `main`, `push` tags `v*`, `workflow_dispatch` (manual — select a tag in the UI to trigger a release build) |
+| **Triggers** | `push` to `main`, `push` tags `v*`, `workflow_dispatch` (dispatched by `tag-on-merge.yml` or manual — select a tag in the UI to trigger a release build) |
 | **Environment** | `codebuild` (protected, manual approval) |
 | **Runner** | `ubuntu-latest` |
 | **Concurrency** | Groups by `{workflow}-{ref}`, cancels in-progress |
@@ -246,12 +246,14 @@ flowchart LR
 
 **Job: `release` ("Create Release")**
 
-| Step | Name | Action |
-|------|------|--------|
-| 1 | Checkout code | `actions/checkout` with `fetch-depth: 0` |
-| 2 | Extract version | Parse `GITHUB_REF` into `version` (no `v`) and `tag` (with `v`) |
-| 3 | Create release artifact | `zip -r ai-dlc-rules-v{VERSION}.zip aidlc-rules/` |
-| 4 | Create GitHub Release | `softprops/action-gh-release` with `draft: true` and zip attached |
+| Step | Name | Condition | Action |
+|------|------|-----------|--------|
+| 1 | Checkout code | _(always)_ | `actions/checkout` with `fetch-depth: 0` |
+| 2 | Extract version | _(always)_ | Guard: if `GITHUB_REF` is not a `v*` tag, emit `::warning::` and skip remaining steps. Otherwise parse into `version` (no `v`) and `tag` (with `v`) |
+| 3 | Create release artifact | ref is a `v*` tag | `zip -r ai-dlc-rules-v{VERSION}.zip aidlc-rules/` |
+| 4 | Create GitHub Release | ref is a `v*` tag | `softprops/action-gh-release` with `draft: true` and zip attached |
+
+**Graceful skip:** If dispatched from a branch instead of a tag (e.g., someone manually runs the workflow from `main`), the job completes successfully with a warning annotation rather than failing. This prevents confusing red X failures in the Actions UI.
 
 **Release naming:** `AI-DLC Workflow v{VERSION}` (e.g., `AI-DLC Workflow v0.1.6`)
 
@@ -331,6 +333,7 @@ The `codebuild.yml` workflow follows a **deny-all-then-grant** pattern: every pe
 | **Least-privilege tokens** | `codebuild.yml` explicitly denies all 16 permission scopes at workflow level, grants only 3 at job level |
 | **Environment protection** | `codebuild` environment gates AWS credential access with potential reviewer/branch rules |
 | **Concurrency control** | `codebuild.yml` cancels in-progress runs for the same branch |
+| **Injection-safe inputs** | All user-controlled and event-driven inputs (`inputs.version`, `pull_request.head.ref`) passed via `env:` variables, never directly interpolated in `run:` blocks |
 | **Code ownership** | `.github/` (including workflows) owned exclusively by `@awslabs/aidlc-admins` via CODEOWNERS |
 | **Account masking** | `mask-aws-account-id: true` in AWS credential configuration |
 
