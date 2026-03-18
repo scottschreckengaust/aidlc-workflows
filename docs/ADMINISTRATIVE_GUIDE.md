@@ -81,9 +81,8 @@ flowchart TD
     H --> I["Create tag vX.Y.Z\non merge commit SHA"]
 
     I --> J["Dispatch release.yml\n(--ref vX.Y.Z)"]
-    I --> K["Dispatch codebuild.yml\n(--ref vX.Y.Z)"]
-
     J --> L["release.yml\n(draft release + rules zip)"]
+    L --> K["Wait for draft release\nthen dispatch codebuild.yml\n(--ref vX.Y.Z)"]
     K --> M{{"Manual approval\n(codebuild environment)"}}
     M --> O["Run AWS CodeBuild\n+ upload artifacts to draft"]
 
@@ -99,7 +98,7 @@ The release flow is **changelog-first**: the CHANGELOG is updated *before* the t
 2. **Approve the CodeBuild environment** — gates access to AWS credentials for the build
 3. **Publish the draft release** — reviews artifacts, makes the release public
 
-`tag-on-merge.yml` explicitly dispatches `release.yml` and `codebuild.yml` via `gh workflow run --ref vX.Y.Z` after creating the tag. This is necessary because tags created with `GITHUB_TOKEN` do not trigger `on: push: tags` events — but `workflow_dispatch` is exempt from this limitation. Both workflows also retain `push: tags: v*` as a fallback for manual tag pushes. The `codebuild.yml` workflow requires **manual approval** via the `codebuild` protected environment before the build proceeds. The upload step handles all release states resiliently:
+`tag-on-merge.yml` explicitly dispatches `release.yml` and `codebuild.yml` via `gh workflow run --ref vX.Y.Z` after creating the tag. The dispatches are **sequential**: `release.yml` runs first and is watched to completion so that the draft release exists before `codebuild.yml` uploads artifacts. This is necessary because tags created with `GITHUB_TOKEN` do not trigger `on: push: tags` events — but `workflow_dispatch` is exempt from this limitation. Both workflows also retain `push: tags: v*` as a fallback for manual tag pushes. The `codebuild.yml` workflow requires **manual approval** via the `codebuild` protected environment before the build proceeds. The upload step handles all release states resiliently:
 - **Draft exists** (normal case) — `release.yml` finishes in ~30s creating the draft; CodeBuild takes minutes, so the draft is ready when artifacts are uploaded
 - **No release yet** (codebuild finished first) — creates a draft with build artifacts; `release.yml` will update it later
 - **Already published** (re-run) — attempts to replace artifacts, warns gracefully if immutable
@@ -163,19 +162,19 @@ flowchart LR
 | **Environment** | _(none)_                                              |
 | **Runner**      | `ubuntu-latest`                                       |
 
-**Purpose:** Automatically creates a version tag on the merge commit when a release PR is merged, then dispatches `release.yml` and `codebuild.yml`.
+**Purpose:** Automatically creates a version tag on the merge commit when a release PR is merged, then dispatches `release.yml` (waits for completion) followed by `codebuild.yml`.
 
 **Job: `tag` ("Create Release Tag")**
 
-| Step | Name                        | Action                                                                            |
-| ---- | --------------------------- | --------------------------------------------------------------------------------- |
-| 1    | Create tag                  | Extract version from branch name, verify tag doesn't exist, create via GitHub API |
-| 2    | Dispatch release workflow   | `gh workflow run release.yml --ref $TAG --repo $REPO`                             |
-| 3    | Dispatch codebuild workflow | `gh workflow run codebuild.yml --ref $TAG --repo $REPO`                           |
+| Step | Name                               | Action                                                                                      |
+| ---- | ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| 1    | Create tag                         | Extract version from branch name, verify tag doesn't exist, create via GitHub API           |
+| 2    | Dispatch release workflow and wait | `gh workflow run release.yml --ref $TAG --repo $REPO`, then `gh run watch` until completion |
+| 3    | Dispatch codebuild workflow        | `gh workflow run codebuild.yml --ref $TAG --repo $REPO` (runs after draft release exists)   |
 
 **Tag creation:** Uses `gh api repos/.../git/refs` to create a lightweight tag.
 
-**Workflow dispatch:** Tags created with `GITHUB_TOKEN` do not trigger `on: push: tags` events in other workflows. To work around this, `tag-on-merge.yml` explicitly dispatches `release.yml` and `codebuild.yml` via `gh workflow run --ref $TAG`. The `workflow_dispatch` event is exempt from this `GITHUB_TOKEN` limitation. Since `--ref` is set to the tag, both dispatched workflows see `github.ref = refs/tags/vX.Y.Z` — identical to a real tag push.
+**Workflow dispatch:** Tags created with `GITHUB_TOKEN` do not trigger `on: push: tags` events in other workflows. To work around this, `tag-on-merge.yml` explicitly dispatches `release.yml` and `codebuild.yml` via `gh workflow run --ref $TAG`. The `workflow_dispatch` event is exempt from this `GITHUB_TOKEN` limitation. Since `--ref` is set to the tag, both dispatched workflows see `github.ref = refs/tags/vX.Y.Z` — identical to a real tag push. The dispatches are **sequential**: `release.yml` runs first (watched via `gh run watch`) to ensure the draft release exists before `codebuild.yml` attempts to upload artifacts. If the release run cannot be found or fails, `codebuild.yml` is dispatched anyway as a fallback.
 
 **Security:** The branch name `release/vX.Y.Z` is passed through an environment variable (not directly interpolated) to prevent command injection. The job-level `if` condition uses `github.event.pull_request.merged == true` to ensure only merged PRs trigger tagging.
 
